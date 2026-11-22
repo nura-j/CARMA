@@ -8,6 +8,8 @@ This repository contains the code for the paper "CARMA: Enhanced Compositionalit
 
 CARMA (**C**ompositionality in LLMs via **A**dvanced **R**egularisation and **M**utual Information **A**lignment) is a framework designed to improve compositional generalisation in large language models. It combines mutual information regularisation with layer-wise stability regularisation to mitigate information fragmentation and preserve robust compositional representations.
 
+![CARMA method](carma_method.gif)
+
 ## Features
 
 - **Mutual Information Regularisation:** Preserves token dependencies across layers to enhance structured compositionality.
@@ -135,6 +137,7 @@ Training history, plots, model checkpoints, and test results are written accordi
 ├── environment.yml
 ├── requirements.txt
 ├── LICENSE
+├── carma_method.gif
 ├── data/
 │   └── wordnet_data_definitions.json
 └── src/
