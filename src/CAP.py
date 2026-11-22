@@ -122,6 +122,9 @@ def cap(model: HookedTransformer,
                             new_tensor[batch_idx, i] = tensor[batch_idx, start:end].mean(dim=0)
                         elif protocol == 'max':
                             new_tensor[batch_idx, i] = tensor[batch_idx, start:end].max(dim=0).values
+                        elif protocol == 'last_token':
+                            if end > start:
+                                new_tensor[batch_idx, i] = tensor[batch_idx, end - 1]
                         else:
                             raise ValueError(f"Invalid protocol: {protocol}")
                 return new_tensor
@@ -145,6 +148,9 @@ def cap(model: HookedTransformer,
                             elif protocol == 'max':
                                 new_part[:, i, j] = flattened_batch[:, start:end, start_:end_].max(dim=1).values.max(
                                     dim=1).values
+                            elif protocol == 'last_token':
+                                if end > start and end_ > start_:
+                                    new_part[:, i, j] = flattened_batch[:, end - 1, end_ - 1]
                             else:
                                 raise ValueError(f"Invalid protocol: {protocol}")
                     new_tensor[batch_idx] = new_part
@@ -165,6 +171,9 @@ def cap(model: HookedTransformer,
                             new_tensor[batch_idx, i] = tensor[batch_idx, start:end].mean(dim=0)
                         elif protocol == 'max':
                             new_tensor[batch_idx, i] = tensor[batch_idx, start:end].max(dim=0).values
+                        elif protocol == 'last_token':
+                            if end > start:
+                                new_tensor[batch_idx, i] = tensor[batch_idx, end - 1]
                         else:
                             raise ValueError(f"Invalid protocol: {protocol}")
                 return new_tensor
