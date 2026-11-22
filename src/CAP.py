@@ -9,6 +9,7 @@ from src.evaluation import calculate_metrics, summary_metrics
 from src.utils import get_last_token_logits, NumpyEncoder
 from src.model_setup import set_model_name
 from src.dataset import group_batches_by_length, create_batch_ranges
+from src.cap_granularity import create_cap_batches, normalise_granularity
 from src.load_saved_predictions import load_saved_predictions
 
 
@@ -40,8 +41,13 @@ def cap(model: HookedTransformer,
     # log_path = f'results/{model_name}/{task_type}'
     os.makedirs(log_path, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    granularity = 'tp_logs' if granularity == 'token_to_phrases' else 'tw_logs'
-    log_file_json_path = os.path.join(base_dir, f'results/{model_name}/{task_type}/cap_results/{granularity}/')
+    granularity = normalise_granularity(granularity)
+    log_granularity = {
+        'token_to_words': 'tw_logs',
+        'token_to_phrases': 'tp_logs',
+        'random': 'ran_logs',
+    }[granularity]
+    log_file_json_path = os.path.join(base_dir, f'results/{model_name}/{task_type}/cap_results/{log_granularity}/')
     log_file_json = f'{log_file_json_path}/llm_evaluation_results_{model_name}_{supervision_type}_{task_type}_seed_{seed}_{grouping_protocol}_{timestamp}_starting_{start_layer}.json'
     os.makedirs(log_file_json_path, exist_ok=True)
 
@@ -50,8 +56,14 @@ def cap(model: HookedTransformer,
         test_dataloader = load_saved_predictions(correct_predictions_path, batch_size=batch_size)
 
     print('Data loaded')
-    grouped_batches = group_batches_by_length(test_dataloader, batch_size=batch_size)
-    batches_ranges = create_batch_ranges(grouped_batches)
+    #grouped_batches = group_batches_by_length(test_dataloader, batch_size=batch_size)
+    #batches_ranges = create_batch_ranges(grouped_batches)
+    if test_dataloader is None:
+        raise ValueError('CAP needs a test dataloader or correct_predictions_path')
+    grouped_batches, batches_ranges = create_cap_batches(
+        test_dataloader, batch_size=batch_size, granularity=granularity,
+        seed=seed, pad_token_id=tokenizer.pad_token_id or 0,
+    )
     model_number_of_layers = model.cfg.n_layers
     result_collection = []
 

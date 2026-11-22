@@ -29,6 +29,13 @@ python -m spacy download en_core_web_sm
 python -m nltk.downloader punkt
 ```
 
+Phrase-level CAP additionally uses Benepar constituency parsing:
+
+```bash
+python -m pip install benepar==0.2.0
+python -c "import benepar; benepar.download('benepar_en3')"
+```
+
 Alternatively:
 
 ```bash
@@ -116,7 +123,7 @@ python -m src.main \
   --intervention_type cap \
   --CAP_start_layer 1 \
   --grouping_protocol max \
-  --intervention_percentage 0.1 \
+  --granularity token_to_words \
   --save_test_results \
   --model_name GPT2 \
   --model_path "path/to/saved/model" \
@@ -124,6 +131,13 @@ python -m src.main \
   --dataset_name idm \
   --data_path "./data/wordnet_data_definitions.json"
 ```
+
+CAP supports `--granularity token_to_words` (alias `tw`),
+`token_to_phrases` (alias `tp`), and `random`. Phrase mode groups words
+using constituency parses. Random mode groups contiguous chunks of one to
+four tokens, reproducibly from `--seed`. The selected granularity controls
+the actual pooling ranges and the output log directory. The pooling
+protocols are `sum`, `mean`, `max`, and `last_token`.
 
 ## Outputs
 
