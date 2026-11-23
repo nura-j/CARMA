@@ -34,6 +34,8 @@ def parse_arguments():
     parser.add_argument("--mi_end_layer", type=int, default=7)
     parser.add_argument("--stability_weight", type=float, default=0.3)
     parser.add_argument("--mi_weight", type=float, default=0.2)
+    parser.add_argument("--mi_n_negatives", type=int, default=5,
+                        help="Number of negative token examples per MI positive pair.")
     parser.add_argument("--carma_weight", type=float, default=0.2)
     parser.add_argument("--save_model", action='store_true')
     parser.add_argument("--save_path", type=str, default=None)
@@ -69,6 +71,8 @@ def parse_arguments():
     elif args.intervention_type is None:
         args.intervention_type = ['synonym']
 
+    if args.mi_n_negatives < 1:
+        parser.error("--mi_n_negatives must be at least 1")
     if args.num_runs is not None and args.num_runs < 1:
         parser.error('--num_runs must be at least 1')
     if args.seeds is not None:
@@ -142,6 +146,7 @@ def train_model(args, model, tokenizer, train_loader, valid_loader, device, mode
         task_name=args.dataset_name,
         stability_weight=args.stability_weight,
         mi_weight=args.mi_weight,
+        mi_n_negatives=args.mi_n_negatives,
         carma_weight=args.carma_weight,
         save_model=args.save_model,
         save_path=args.save_path,
