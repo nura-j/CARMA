@@ -6,7 +6,7 @@ from transformer_lens import HookedTransformer
 
 def load_model_transformers(model_name="gpt2", device='cpu'):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    load_kwargs = {'torch_dtype': 'auto'}
+    load_kwargs = {'torch_dtype': torch.float32 if str(device) == 'cpu' else 'auto'}
     if torch.cuda.is_available():
         load_kwargs['device_map'] = 'auto'
     model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
@@ -131,6 +131,10 @@ def filter_layers(model, model_type="GPT", block_prefix_gpt="transformer.h", blo
         # Include only the full block outputs for GPT models
         for name, _ in model.named_modules():
             if name.startswith(block_prefix_gpt) and not any(sub in name for sub in [".ln_", ".attn", ".mlp", ".dropout"]):
+                filtered_layers.append(name)
+    elif model_type == 'Pythia':
+        for name, _ in model.named_modules():
+            if name.startswith('gpt_neox.layers.') and name.count('.') == 2:
                 filtered_layers.append(name)
     elif model_type == "Gemma" or model_type == "Llama" or model_type == 'Qwen':
         # Include only the full block outputs for Gemma models
