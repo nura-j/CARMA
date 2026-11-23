@@ -374,5 +374,5 @@ def fine_tune_transformer(
             }, save_path)
 
         print()
-    model_name = save_path.split('/')[-1].split('.')[0]
+    model_name = save_path.split('/')[-1].split('.')[0] if save_path else set_model_name(model_name)
     return history, model, model_name, total_training_duration

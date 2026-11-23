@@ -6,7 +6,12 @@ from transformer_lens import HookedTransformer
 
 def load_model_transformers(model_name="gpt2", device='cpu'):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cuda", torch_dtype='auto')
+    load_kwargs = {'torch_dtype': 'auto'}
+    if torch.cuda.is_available():
+        load_kwargs['device_map'] = 'auto'
+    model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+    if not torch.cuda.is_available():
+        model = model.to(device)
     return model, tokenizer
 
 

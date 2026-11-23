@@ -121,7 +121,7 @@ def test_model(
     all_top_k_predictions = []
     all_confidences = []
     all_top_k_confidences = []
-    all_logits = []  # Add this to store logits
+    #all_logits = []  # Adding this to store logits
 
     with torch.no_grad():
         progress_bar = tqdm(test_dataloader, desc="Testing")
@@ -142,7 +142,7 @@ def test_model(
 
             labels = batch['labels'].to(logits.device)
             last_token_logits = get_last_token_logits(logits, batch['attention_mask'])
-            all_logits.append(last_token_logits.detach().cpu())  # Detach and move to CPU
+            #all_logits.append(last_token_logits.detach().cpu())  # Detach and move to CPU
             # predictions = torch.argmax(last_token_logits, dim=1)
             # Get predictions and confidences
             probs = torch.softmax(last_token_logits, dim=1)
@@ -335,7 +335,7 @@ def test_model(
             with open(save_path, "w") as f:
                 json.dump(correct_predictions, f, indent=4)
         # if they are tensors, convert them to item
-        all_logits_tensor = torch.cat(all_logits, dim=0).to(device)
+        #all_logits_tensor = torch.cat(all_logits, dim=0).to(device)
         # Save all metrics to separate file
         metrics_dict = {
             "metadata": {
@@ -367,9 +367,10 @@ def test_model(
             #     predictions=all_predictions
             # )
         }
-        print(f"Saving metrics to {metrics_save_path}")
-        with open(metrics_save_path, "w") as f:
-            json.dump(metrics_dict, f, indent=4)
+        if save_results:
+            print(f"Saving metrics to {metrics_save_path}")
+            with open(metrics_save_path, "w") as f:
+                json.dump(metrics_dict, f, indent=4)
         if isinstance(overall_accuracy, torch.Tensor):
             overall_accuracy = overall_accuracy.item()
         if isinstance(precision, torch.Tensor):
