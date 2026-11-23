@@ -28,6 +28,7 @@ def fine_tune_transformer(
         warmup_steps: int = 100,
         stability_weight: float = 0.3,
         mi_weight: float = 0.2,
+        mi_n_negatives: int = 5,
         carma_weight: float = 0.2,
         stability_start_layer: int = 0,
         stability_end_layer: Optional[int] = None,
@@ -49,6 +50,8 @@ def fine_tune_transformer(
         model_type = 'Gemma'
     elif 'qwen' in model_name.lower():
         model_type = 'Qwen'
+    elif 'pythia' in model_name.lower():
+        model_type = 'Pythia'
     else:
         raise ValueError(f"Model type not recognised: {model_name}")
 
@@ -92,7 +95,7 @@ def fine_tune_transformer(
 
     if carma_weight > 0:
         stability_loss = StabilityLoss(stability_start_layer, stability_end_layer, model_type)
-        mi_loss = MILoss(mi_start_layer, mi_end_layer, model_type=model_type)
+        mi_loss = MILoss(mi_start_layer, mi_end_layer, n_negatives=mi_n_negatives, model_type=model_type)
 
     total_training_steps = len(train_dataloader) * num_epochs
     scheduler = get_scheduler("linear", optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_training_steps)
@@ -316,6 +319,7 @@ def fine_tune_transformer(
                         "warmup_steps": warmup_steps,
                         "stability_weight": stability_weight,
                         "mi_weight": mi_weight,
+                        "mi_n_negatives": mi_n_negatives,
                         "carma_weight": carma_weight,
                         "stability_start_layer": stability_start_layer,
                         "stability_end_layer": stability_end_layer,
@@ -354,6 +358,7 @@ def fine_tune_transformer(
                 "warmup_steps": warmup_steps,
                 "stability_weight": stability_weight,
                 "mi_weight": mi_weight,
+                "mi_n_negatives": mi_n_negatives,
                 "carma_weight": carma_weight,
                 "stability_start_layer": stability_start_layer,
                 "stability_end_layer": stability_end_layer,
