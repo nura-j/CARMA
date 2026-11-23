@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+from functools import lru_cache
 from datasets import load_dataset, DatasetDict, concatenate_datasets
 from typing import Dict, List, Optional, Tuple, Any
 import spacy
@@ -10,6 +11,19 @@ from nltk.corpus import stopwords
 from torch.utils.data import DataLoader, Dataset as TorchDataset
 import re
 stops = set(stopwords.words('english'))
+
+WORDNET_POS = {
+    'NOUN': wn.NOUN,
+    'VERB': wn.VERB,
+    'ADJ': wn.ADJ,
+    'ADV': wn.ADV,
+}
+
+
+@lru_cache(maxsize=1)
+def synonym_pos_tagger():
+    """Load the contextual POS tagger once per process."""
+    return spacy.load('en_core_web_sm', disable=['parser', 'ner'])
 
 
 @dataclass
@@ -25,6 +39,24 @@ class TokenSpan:
 
 
 additional_prompts = {
+    'pythia_14m': {
+        'idm': '{} is called a "',
+        'hypernyms': '{} is a type of "',
+        'synonyms': '{} is a synonym of "',
+        'sst': 'The sentiment of {} is \"',
+    },
+    'pythia_410m': {
+        'idm': '{} is called a "',
+        'hypernyms': '{} is a type of "',
+        'synonyms': '{} is a synonym of "',
+        'sst': 'The sentiment of {} is \"',
+    },
+    'pythia_1b': {
+        'idm': '{} is called a "',
+        'hypernyms': '{} is a type of "',
+        'synonyms': '{} is a synonym of "',
+        'sst': 'The sentiment of {} is \"',
+    },
     'GPT2': {
         'idm': '{} is called a "', # 87
         'hypernyms': '{} is a type of "',
@@ -870,32 +902,63 @@ class SynonymReplacementDataset(CustomDataset):
 
     def synonym_replacement(self, content: str) -> str:
         """
-        Replace a percentage of words in the content with synonyms.
+        Replace content words with WordNet synonyms of the same contextual POS.
         """
         if self.replacement_percentage == 0:
             return content
-        words = content.split(' ')
-        num_words_to_replace = max(1, int(len(words) * self.replacement_percentage))
-        candidate_indices = [
-            index for index, word in enumerate(words)
-            if word and word.lower() not in self.stops
+        doc = synonym_pos_tagger()(content)
+        word_count = sum(token.is_alpha for token in doc)
+        num_words_to_replace = max(1, int(word_count * self.replacement_percentage))
+        candidates = [
+            token for token in doc
+            if token.is_alpha and token.lower_ not in self.stops
+            and token.pos_ in WORDNET_POS
         ]
-        random.shuffle(candidate_indices)
+        random.shuffle(candidates)
 
-        replaced_content = words.copy()
-        num_replaced = 0
-
-        for index in candidate_indices:
-            word = words[index]
-            synonyms = get_synonyms(word)
-            if synonyms:
-                synonym = random.choice(synonyms).replace("_", " ")
-                replaced_content[index] = synonym
-                num_replaced += 1
-            if num_replaced >= num_words_to_replace:
+        # Offsets refer to the original content. Apply edits from right to left
+        # so punctuation and whitespace stay in place.
+        replacements = []
+        for token in candidates:
+            synonyms = get_synonyms(token.text, pos=WORDNET_POS[token.pos_])
+            random.shuffle(synonyms)
+            for synonym in synonyms:
+                if token.text.isupper():
+                    synonym = synonym.upper()
+                elif token.text.istitle():
+                    synonym = synonym.title()
+                proposed = replacements + [
+                    (token.idx, token.idx + len(token), synonym, token.pos_, token.tag_)
+                ]
+                if self.replacements_match_pos(content, proposed):
+                    replacements = proposed
+                    break
+            if len(replacements) >= num_words_to_replace:
                 break
 
-        return ' '.join(replaced_content)
+        return self.apply_replacements(content, replacements)
+
+    @staticmethod
+    def apply_replacements(content, replacements):
+        for start, end, synonym, _, _ in sorted(replacements, reverse=True):
+            content = content[:start] + synonym + content[end:]
+        return content
+
+    @classmethod
+    def replacements_match_pos(cls, content, replacements):
+        modified = cls.apply_replacements(content, replacements)
+        doc = synonym_pos_tagger()(modified)
+        for start, end, synonym, expected_pos, expected_tag in replacements:
+            shifted_start = start + sum(
+                len(other_synonym) - (other_end - other_start)
+                for other_start, other_end, other_synonym, _, _ in replacements
+                if other_start < start
+            )
+            span = doc.char_span(shifted_start, shifted_start + len(synonym), alignment_mode='strict')
+            if (span is None or len(span) != 1 or span[0].pos_ != expected_pos
+                    or span[0].tag_ != expected_tag):
+                return False
+        return True
 
     def __getitem__(self, idx):
         item = dict(self.data[idx])
@@ -946,16 +1009,19 @@ class SynonymReplacementDataset(CustomDataset):
         )
 
 
-def get_synonyms(word, match_pos=True, num_synonyms=5):
+def get_synonyms(word, pos, num_synonyms=5):
+    """Return distinct, single-word lemmas from synsets of the requested POS."""
     synonyms = []
-    for syn in wn.synsets(word):
+    seen = {word.casefold()}
+    for syn in wn.synsets(word, pos=pos):
         for lm in syn.lemmas():
+            candidate = lm.name().replace('_', ' ')
+            if not candidate.isalpha() or candidate.casefold() in seen:
+                continue
+            synonyms.append(candidate)
+            seen.add(candidate.casefold())
             if len(synonyms) >= num_synonyms:
-                break
-            if lm.name() != word:
-                if match_pos and lm.synset().pos() != syn.pos():
-                    continue
-                synonyms.append(lm.name())
+                return synonyms
     return synonyms
 
 

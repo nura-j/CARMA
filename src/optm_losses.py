@@ -30,6 +30,8 @@ class MILoss(nn.Module):
         self.start_layer = start_layer
         self.end_layer = end_layer
         self.temperature = temperature
+        if n_negatives < 1:
+            raise ValueError("n_negatives must be at least 1")
         self.n_negatives = n_negatives
         self.similarity_metric = similarity_metric
         self.max_length = max_length
@@ -145,6 +147,9 @@ class MILoss(nn.Module):
         if self.model_type == 'GPT': # Since we are using hugface transformers, we need to manually check the model type and get the correct keys
             resid_keys = sorted([k for k in cache.keys() if k.startswith("transformer.h.")],
                                 key=lambda x: int(x.split('.')[2]))
+        elif self.model_type == 'Pythia':
+            resid_keys = sorted([k for k in cache if k.startswith('gpt_neox.layers.')],
+                                key=lambda x: int(x.split('.')[2]))
         elif self.model_type == 'Gemma' or self.model_type == 'Llama':
             resid_keys = sorted([k for k in cache.keys() if k.startswith("model.layers.")],
                                 key=lambda x: int(x.split('.')[2]))
@@ -207,6 +212,9 @@ class StabilityLoss:
         #                     key=lambda x: int(x.split('.')[2]))
         if self.model_type == 'GPT':
             resid_keys = sorted([k for k in cache.keys() if k.startswith("transformer.h.")],
+                                key=lambda x: int(x.split('.')[2]))
+        elif self.model_type == 'Pythia':
+            resid_keys = sorted([k for k in cache if k.startswith('gpt_neox.layers.')],
                                 key=lambda x: int(x.split('.')[2]))
         elif self.model_type == 'Gemma' or self.model_type == 'Llama':
             resid_keys = sorted([k for k in cache.keys() if k.startswith("model.layers.")],
