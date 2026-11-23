@@ -55,6 +55,7 @@ python -m src.main \
   --data_path "./data/wordnet_data_definitions.json" \
   --carma_weight 0.3 \
   --mi_weight 0.5 \
+  --mi_n_negatives 5 \
   --stability_weight 0.2 \
   --mi_end_layer 6 \
   --stability_end_layer 4 \
@@ -73,6 +74,7 @@ python -m src.main \
   --data_path "stanfordnlp/sst" \
   --carma_weight 0.3 \
   --mi_weight 0.5 \
+  --mi_n_negatives 5 \
   --stability_weight 0.2 \
   --mi_end_layer 6 \
   --stability_end_layer 4 \
@@ -92,6 +94,7 @@ python -m src.main \
 | `--model_path` | Path to a saved fine-tuned model. |
 | `--carma_weight` | Weight of the combined CARMA objective. |
 | `--mi_weight` | Weight of mutual information regularisation. |
+| `--mi_n_negatives` | Negative token examples sampled per positive pair in the MI loss (default: `5`; minimum: `1`). |
 | `--stability_weight` | Weight of layer-wise stability regularisation. |
 | `--mi_start_layer` / `--mi_end_layer` | Layers covered by mutual information regularisation. |
 | `--stability_start_layer` / `--stability_end_layer` | Layers covered by stability regularisation. |
@@ -104,6 +107,12 @@ python -m src.main \
 ### Robustness experiments
 
 Evaluate synonym replacement:
+
+Replacement candidates come from WordNet synsets matching the word's
+contextual part of speech. A candidate is used only when spaCy assigns it
+the same part of speech and grammatical tag in the modified definition.
+Only single-word candidates are used, so fewer than the requested percentage
+may be replaced when no suitable candidate is available.
 
 ```bash
 python -m src.main \
