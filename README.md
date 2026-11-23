@@ -95,6 +95,8 @@ python -m src.main \
 | `--carma_weight` | Weight of the combined CARMA objective. |
 | `--mi_weight` | Weight of mutual information regularisation. |
 | `--mi_n_negatives` | Negative token examples sampled per positive pair in the MI loss (default: `5`; minimum: `1`). |
+| `--fast_loss` | Use the vectorised MI loss with stable log-sum-exp. |
+| `--mi_share_negatives` | With `--fast_loss`, reuse the same sampled negatives across layers. |
 | `--stability_weight` | Weight of layer-wise stability regularisation. |
 | `--mi_start_layer` / `--mi_end_layer` | Layers covered by mutual information regularisation. |
 | `--stability_start_layer` / `--stability_end_layer` | Layers covered by stability regularisation. |
@@ -103,6 +105,21 @@ python -m src.main \
 | `--CAP` | Run CAP; equivalent to `--intervention --intervention_type cap`. |
 | `--num_runs` | Repeat each intervention with consecutive seeds starting at `--seed` (default: one run). |
 | `--seeds` | Use these explicit intervention seeds instead; if combined with `--num_runs`, their counts must match. |
+
+### Faster MI loss
+
+Add `--fast_loss` to a CARMA training command to use the vectorised MI loss.
+It uses each example's own token spans and samples negatives only from that
+example's unpadded tokens. The number of negatives is set by
+`--mi_n_negatives`. By default, negatives are resampled for each layer, as in
+the reference loss. `--mi_share_negatives` reuses them across layers and
+changes the sampling correlation. The stability loss is unchanged.
+
+For fixed positive and negative token positions, both MI implementations
+compute the same positive InfoNCE objective. Their random draws use
+different generators, so separately seeded training runs need not produce
+identical checkpoints. Automatically named fast-loss checkpoints include
+`_fast` to keep them separate from reference-loss checkpoints.
 
 ### Robustness experiments
 

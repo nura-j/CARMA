@@ -5,6 +5,7 @@ from typing import Optional
 from transformers import get_scheduler
 from tqdm import tqdm
 from src.optm_losses import StabilityLoss, MILoss
+from src.optm_losses_fast import MILossFast
 from transformer_lens import HookedTransformer
 import torch
 from src.evaluation import exact_match_accuracy
@@ -29,6 +30,8 @@ def fine_tune_transformer(
         stability_weight: float = 0.3,
         mi_weight: float = 0.2,
         mi_n_negatives: int = 5,
+        fast_loss: bool = False,
+        mi_share_negatives: bool = False,
         carma_weight: float = 0.2,
         stability_start_layer: int = 0,
         stability_end_layer: Optional[int] = None,
@@ -54,6 +57,9 @@ def fine_tune_transformer(
         model_type = 'Pythia'
     else:
         raise ValueError(f"Model type not recognised: {model_name}")
+
+    if mi_share_negatives and not fast_loss:
+        raise ValueError('mi_share_negatives requires fast_loss')
 
     resid_post_keys = filter_layers(
         model,
@@ -85,6 +91,14 @@ def fine_tune_transformer(
         else:
             filename = f"{model_name}_{granularity}_finetuned.pt"
 
+        if carma_weight > 0:
+            if mi_n_negatives != 5:
+                filename = filename.replace('.pt', f'_neg_{mi_n_negatives}.pt')
+            if fast_loss:
+                filename = filename.replace('.pt', '_fast.pt')
+            if mi_share_negatives:
+                filename = filename.replace('.pt', '_shared_negatives.pt')
+
         save_path = os.path.join(save_dir, task_name, filename)
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
@@ -95,7 +109,10 @@ def fine_tune_transformer(
 
     if carma_weight > 0:
         stability_loss = StabilityLoss(stability_start_layer, stability_end_layer, model_type)
-        mi_loss = MILoss(mi_start_layer, mi_end_layer, n_negatives=mi_n_negatives, model_type=model_type)
+        mi_class = MILossFast if fast_loss else MILoss
+        mi_options = {'resample_per_layer': not mi_share_negatives} if fast_loss else {}
+        mi_loss = mi_class(mi_start_layer, mi_end_layer, n_negatives=mi_n_negatives,
+                           model_type=model_type, **mi_options)
 
     total_training_steps = len(train_dataloader) * num_epochs
     scheduler = get_scheduler("linear", optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_training_steps)
@@ -320,6 +337,8 @@ def fine_tune_transformer(
                         "stability_weight": stability_weight,
                         "mi_weight": mi_weight,
                         "mi_n_negatives": mi_n_negatives,
+                        "fast_loss": fast_loss,
+                        "mi_share_negatives": mi_share_negatives,
                         "carma_weight": carma_weight,
                         "stability_start_layer": stability_start_layer,
                         "stability_end_layer": stability_end_layer,
@@ -359,6 +378,8 @@ def fine_tune_transformer(
                 "stability_weight": stability_weight,
                 "mi_weight": mi_weight,
                 "mi_n_negatives": mi_n_negatives,
+                "fast_loss": fast_loss,
+                "mi_share_negatives": mi_share_negatives,
                 "carma_weight": carma_weight,
                 "stability_start_layer": stability_start_layer,
                 "stability_end_layer": stability_end_layer,

@@ -36,6 +36,10 @@ def parse_arguments():
     parser.add_argument("--mi_weight", type=float, default=0.2)
     parser.add_argument("--mi_n_negatives", type=int, default=5,
                         help="Number of negative token examples per MI positive pair.")
+    parser.add_argument('--fast_loss', action='store_true',
+                        help='Use the vectorised, numerically stable MI loss during CARMA training.')
+    parser.add_argument('--mi_share_negatives', action='store_true',
+                        help='With --fast_loss, reuse sampled MI negatives across layers.')
     parser.add_argument("--carma_weight", type=float, default=0.2)
     parser.add_argument("--save_model", action='store_true')
     parser.add_argument("--save_path", type=str, default=None)
@@ -73,6 +77,8 @@ def parse_arguments():
 
     if args.mi_n_negatives < 1:
         parser.error("--mi_n_negatives must be at least 1")
+    if args.mi_share_negatives and not args.fast_loss:
+        parser.error('--mi_share_negatives requires --fast_loss')
     if args.num_runs is not None and args.num_runs < 1:
         parser.error('--num_runs must be at least 1')
     if args.seeds is not None:
@@ -147,6 +153,8 @@ def train_model(args, model, tokenizer, train_loader, valid_loader, device, mode
         stability_weight=args.stability_weight,
         mi_weight=args.mi_weight,
         mi_n_negatives=args.mi_n_negatives,
+        fast_loss=args.fast_loss,
+        mi_share_negatives=args.mi_share_negatives,
         carma_weight=args.carma_weight,
         save_model=args.save_model,
         save_path=args.save_path,
