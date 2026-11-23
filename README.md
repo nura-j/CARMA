@@ -26,7 +26,7 @@ Use the provided `environment.yml` or install the dependencies with pip:
 conda env create -f environment.yml
 conda activate CARMA
 python -m spacy download en_core_web_sm
-python -m nltk.downloader punkt
+python -m nltk.downloader punkt wordnet stopwords
 ```
 
 Phrase-level CAP additionally uses Benepar constituency parsing:
@@ -97,6 +97,9 @@ python -m src.main \
 | `--stability_start_layer` / `--stability_end_layer` | Layers covered by stability regularisation. |
 | `--train` / `--test` | Run training and/or evaluation. |
 | `--save_model` / `--save_test_results` | Save model checkpoints and test outputs. |
+| `--CAP` | Run CAP; equivalent to `--intervention --intervention_type cap`. |
+| `--num_runs` | Repeat each intervention with consecutive seeds starting at `--seed` (default: one run). |
+| `--seeds` | Use these explicit intervention seeds instead; if combined with `--num_runs`, their counts must match. |
 
 ### Robustness experiments
 
