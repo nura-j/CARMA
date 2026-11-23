@@ -850,36 +850,47 @@ class SynonymReplacementDataset(CustomDataset):
         self.model_name = model_name
         self.dataset_name = dataset_name
         self.replacement_percentage = replacement_percentage
-        self.stops = stops or set(stopwords.words('english'))
+        self.stops = stops if stops is not None else set(stopwords.words('english'))
         self.prompts = prompts or additional_prompts
 
-    def extract_content(self, input_text: str) -> Tuple[str, str]:
+    def extract_content(self, input_text: str) -> Tuple[str, str, str]:
         """
         Split input text into the prompt and content for the specific task/model.
         """
-        prompt_format = self.prompts.get(self.model_name, {}).get(self.dataset_name, "")
-        if prompt_format and prompt_format in input_text:
-            prompt, content = input_text.split(prompt_format, 1)
-            return prompt + prompt_format, content.strip()
-        return "", input_text
+        prompt_format = self.prompts.get(self.model_name, {}).get(self.dataset_name)
+        if not prompt_format or '{}' not in prompt_format:
+            raise ValueError(f'No prompt template for {self.model_name}/{self.dataset_name}')
+        prefix, suffix = prompt_format.split('{}', 1)
+        if not input_text.startswith(prefix):
+            raise ValueError(f'Input does not match the {self.model_name}/{self.dataset_name} prompt')
+        # A long input may have been truncated before the prompt suffix.
+        if suffix and input_text.endswith(suffix):
+            return prefix, input_text[len(prefix):-len(suffix)], suffix
+        return prefix, input_text[len(prefix):], ''
 
     def synonym_replacement(self, content: str) -> str:
         """
         Replace a percentage of words in the content with synonyms.
         """
+        if self.replacement_percentage == 0:
+            return content
         words = content.split(' ')
         num_words_to_replace = max(1, int(len(words) * self.replacement_percentage))
-        random_word_list = list(set([word for word in words if word.lower() not in self.stops]))
-        random.shuffle(random_word_list)
+        candidate_indices = [
+            index for index, word in enumerate(words)
+            if word and word.lower() not in self.stops
+        ]
+        random.shuffle(candidate_indices)
 
         replaced_content = words.copy()
         num_replaced = 0
 
-        for word in random_word_list:
+        for index in candidate_indices:
+            word = words[index]
             synonyms = get_synonyms(word)
             if synonyms:
                 synonym = random.choice(synonyms).replace("_", " ")
-                replaced_content = [synonym if w == word else w for w in replaced_content]
+                replaced_content[index] = synonym
                 num_replaced += 1
             if num_replaced >= num_words_to_replace:
                 break
@@ -887,30 +898,52 @@ class SynonymReplacementDataset(CustomDataset):
         return ' '.join(replaced_content)
 
     def __getitem__(self, idx):
-        item = self.data[idx]
+        item = dict(self.data[idx])
+        if self.replacement_percentage == 0:
+            return item
         if 'input_ids' in item:
-            input_text = self.tokenizer.decode(item['input_ids'], skip_special_tokens=True)
+            input_ids = item['input_ids']
+            attention_mask = item['attention_mask']
+            input_text = self.tokenizer.decode(
+                input_ids[attention_mask.bool()], skip_special_tokens=True
+            )
 
             # Extract prompt and content dynamically
-            prompt, content = self.extract_content(input_text)
+            prefix, content, suffix = self.extract_content(input_text)
 
             # Apply synonym replacement only to the content
             modified_content = self.synonym_replacement(content)
-            modified_text = f"{prompt}{modified_content}"
+            if modified_content == content:
+                return item
+            modified_text = f"{prefix}{modified_content}{suffix}"
 
             # Re-tokenize the modified text
             input_encoding = self.tokenizer(
                 modified_text,
                 truncation=True,
                 padding='max_length',
-                max_length=len(item['input_ids']),
+                max_length=len(input_ids),
                 return_tensors='pt'
             )
 
             item['input_ids'] = input_encoding.input_ids.squeeze()
             item['attention_mask'] = input_encoding.attention_mask.squeeze()
+            valid_length = int(item['attention_mask'].sum().item())
+            annotations = DatasetLoader.annotate_input(
+                self, modified_text, item['input_ids'][:valid_length].tolist()
+            )
+            if isinstance(item['annotations'], dict):
+                item['annotations'] = annotations
+            else:
+                item['annotations'] = annotations['token_spans']
+                item['reduction_percentage'] = annotations['reduction_percentage']
 
         return item
+
+    def get_token_spans(self, text, tokens, token_ids, constituency_level):
+        return DatasetLoader.get_token_spans(
+            self, text, tokens, token_ids, constituency_level
+        )
 
 
 def get_synonyms(word, match_pos=True, num_synonyms=5):
@@ -940,8 +973,10 @@ def create_synonym_replacement_test_loader(original_test_loader, tokenizer, mode
     Returns:
         DataLoader: A DataLoader for the modified dataset.
     """
-    # Extract the raw data from the original DataLoader
-    test_data = original_test_loader.dataset.data
+    if not 0 <= replacement_percentage <= 1:
+        raise ValueError('replacement_percentage must be between 0 and 1')
+
+    test_data = original_test_loader.dataset
 
     # Create the synonym replacement dataset
     synonym_dataset = SynonymReplacementDataset(

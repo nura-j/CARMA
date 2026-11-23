@@ -66,47 +66,39 @@ class MILoss(nn.Module):
         return pos_similarity / self.temperature, neg_similarity / self.temperature
 
     @staticmethod
-    def get_anchors(activations: torch.Tensor, indices: List[Tuple[torch.Tensor, Tuple[int, int]]]) -> torch.Tensor:
+    def get_anchors(activations: torch.Tensor, indices) -> torch.Tensor:
         anchors = torch.stack([
-            activations[batch_idx][idxs[1][0]:idxs[1][1]][idx_pair[0]]
-            for batch_idx in range(activations.shape[0]) for idxs in indices for idx_pair in idxs[0]
+            activations[batch_idx, start + int(pair[0])]
+            for batch_idx, start, _, pairs, _ in indices for pair in pairs
         ])
 
         return anchors
 
     @staticmethod
-    def get_positives(activations: torch.Tensor, indices: List[Tuple[torch.Tensor, Tuple[int, int]]]) -> torch.Tensor:
+    def get_positives(activations: torch.Tensor, indices) -> torch.Tensor:
         positives = torch.stack([
-            activations[batch_idx][idxs[1][0]:idxs[1][1]][idx_pair[1]]
-            for batch_idx in range(activations.shape[0]) for idxs in indices for idx_pair in idxs[0]
+            activations[batch_idx, start + int(pair[1])]
+            for batch_idx, start, _, pairs, _ in indices for pair in pairs
         ])
 
         return positives
 
     @staticmethod
     def get_negatives(activations: torch.Tensor,
-                      indices: List[Tuple[torch.Tensor, Tuple[int, int]]],
+                      indices,
                       n_negatives: int) -> torch.Tensor:
-        batch_size = activations.shape[0]
-        neg_sample_size = sum([len(idxs[0]) for batch_idx in range(batch_size) for idxs in indices])
-        neg_indices = list()
+        neg_sample_size = sum(len(pairs) for _, _, _, pairs, _ in indices)
+        neg_indices = []
+        for batch_idx, start, end, pairs, valid_length in indices:
+            candidates = [position for position in range(valid_length)
+                          if position < start or position >= end]
+            for _ in pairs:
+                neg_indices.extend((batch_idx, position) for position in
+                                   random.choices(candidates, k=n_negatives))
 
-        for batch_idx in range(batch_size):
-            for idxs in indices:
-                for idx_pair in idxs[0]:
-                    neg_indices.extend(
-                        sorted(random.choices(
-                            [(batch_idx, i)
-                             for i in range(activations[batch_idx].shape[0])
-                             if (i < idxs[1][0] or i >= idxs[1][1])
-                             ],
-                            k=n_negatives
-                        ), key=lambda x: x[1])
-                    )
-
-        negatives_alt = activations[torch.tensor(neg_indices).long().T.tolist()]
-
-        return negatives_alt.view((neg_sample_size, n_negatives, activations.shape[-1]))
+        batch_indices, positions = zip(*neg_indices)
+        negatives = activations[list(batch_indices), list(positions)]
+        return negatives.view(neg_sample_size, n_negatives, activations.shape[-1])
 
     def compute_layer_mi(self, activations: torch.Tensor, token_spans: List[List['TokenSpan']]) -> torch.Tensor:
         """
@@ -118,11 +110,17 @@ class MILoss(nn.Module):
             torch.Tensor: MI estimate for the layer
         """
 
-        indices = [
-            (self.index_combs[ws.end_idx - ws.start_idx], (ws.start_idx, ws.end_idx))
-            for word_spans in token_spans for ws in word_spans[:-1]
-            if (ws.end_idx - ws.start_idx > 1)
-        ]
+        indices = []
+        for batch_idx, word_spans in enumerate(token_spans):
+            valid_length = word_spans[-1].end_idx if word_spans else 0
+            for span in word_spans[:-1]:
+                length = span.end_idx - span.start_idx
+                if 1 < length <= self.max_length and length < valid_length:
+                    indices.append((batch_idx, span.start_idx, span.end_idx,
+                                    self.index_combs[length], valid_length))
+
+        if not indices:
+            return None
 
         anchors = MILoss.get_anchors(activations, indices)
         positives = MILoss.get_positives(activations, indices)
@@ -170,7 +168,10 @@ class MILoss(nn.Module):
                 n_valid_layers += 1
 
         if n_valid_layers == 0:
-            return torch.tensor(0.0, device=cache[resid_keys[0]].device)
+            first_activation = cache[resid_keys[0]]
+            if isinstance(first_activation, tuple):
+                first_activation = first_activation[0]
+            return first_activation.new_zeros(())
 
         return -total_mi / n_valid_layers  # Negative because we want to maximize MI
 
