@@ -38,6 +38,7 @@ def fine_tune_transformer(
         mi_start_layer: int = 0,
         mi_end_layer: Optional[int] = None,
         save_model: bool = True,
+        save_each_epoch: bool = False,
         save_path: str = None,
         task_name: str = 'idm',
         granularity: str = 'tw',
@@ -110,7 +111,8 @@ def fine_tune_transformer(
     if carma_weight > 0:
         stability_loss = StabilityLoss(stability_start_layer, stability_end_layer, model_type)
         mi_class = MILossFast if fast_loss else MILoss
-        mi_options = {'resample_per_layer': not mi_share_negatives} if fast_loss else {}
+        mi_options = {'resample_per_layer': not mi_share_negatives,
+                      'seed': seed} if fast_loss else {}
         mi_loss = mi_class(mi_start_layer, mi_end_layer, n_negatives=mi_n_negatives,
                            model_type=model_type, **mi_options)
 
@@ -398,6 +400,33 @@ def fine_tune_transformer(
                 'training_history': history,
                 'training_config': training_config
             }, save_path)
+
+        if save_model and save_each_epoch:
+            epoch_path = os.path.splitext(save_path)[0] + f'_epoch_{epoch + 1}.pt'
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'training_history': history,
+                'training_config': {
+                    'model_name': model_name,
+                    'seed': seed,
+                    'num_epochs': num_epochs,
+                    'learning_rate': learning_rate,
+                    'warmup_steps': warmup_steps,
+                    'batch_size': train_dataloader.batch_size,
+                    'carma_weight': carma_weight,
+                    'mi_weight': mi_weight,
+                    'stability_weight': stability_weight,
+                    'mi_n_negatives': mi_n_negatives,
+                    'fast_loss': fast_loss,
+                    'mi_share_negatives': mi_share_negatives,
+                    'mi_start_layer': mi_start_layer,
+                    'mi_end_layer': mi_end_layer,
+                    'stability_start_layer': stability_start_layer,
+                    'stability_end_layer': stability_end_layer,
+                    'task_name': task_name,
+                },
+            }, epoch_path)
 
         print()
     model_name = save_path.split('/')[-1].split('.')[0] if save_path else set_model_name(model_name)

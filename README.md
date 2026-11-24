@@ -102,6 +102,7 @@ python -m src.main \
 | `--stability_start_layer` / `--stability_end_layer` | Layers covered by stability regularisation. |
 | `--train` / `--test` | Run training and/or evaluation. |
 | `--save_model` / `--save_test_results` | Save model checkpoints and test outputs. |
+| `--save_each_epoch` | With `--save_model`, save a compact checkpoint after every epoch for validation-based selection. |
 | `--CAP` | Run CAP; equivalent to `--intervention --intervention_type cap`. |
 | `--num_runs` | Repeat each intervention with consecutive seeds starting at `--seed` (default: one run). |
 | `--seeds` | Use these explicit intervention seeds instead; if combined with `--num_runs`, their counts must match. |

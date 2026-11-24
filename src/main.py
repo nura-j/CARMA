@@ -42,6 +42,8 @@ def parse_arguments():
                         help='With --fast_loss, reuse sampled MI negatives across layers.')
     parser.add_argument("--carma_weight", type=float, default=0.2)
     parser.add_argument("--save_model", action='store_true')
+    parser.add_argument('--save_each_epoch', action='store_true',
+                        help='Save a compact model checkpoint after every epoch.')
     parser.add_argument("--save_path", type=str, default=None)
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
     parser.add_argument("--calculate_layers_percentage", action='store_true')
@@ -79,6 +81,8 @@ def parse_arguments():
         parser.error("--mi_n_negatives must be at least 1")
     if args.mi_share_negatives and not args.fast_loss:
         parser.error('--mi_share_negatives requires --fast_loss')
+    if args.save_each_epoch and not args.save_model:
+        parser.error('--save_each_epoch requires --save_model')
     if args.num_runs is not None and args.num_runs < 1:
         parser.error('--num_runs must be at least 1')
     if args.seeds is not None:
@@ -103,6 +107,10 @@ def setup_model_and_tokenizer(args, device):
         model_path = args.model_path if args.model_path else None
         path_type = 'HF'
         model, tokenizer = load_model_tl(model_name=model_name, model_path=model_path, path_type=path_type, device=device)
+        # TransformerLens enables a BOS token for Pythia by default, whereas
+        # Hugging Face fine-tuning and evaluation use Pythia without one.
+        if set_model_name(model_name).startswith('pythia'):
+            tokenizer.add_bos_token = False
     else:
         # model, tokenizer = load_model_tl(args.model_name, device)
         model, tokenizer = load_model_transformers(args.model_name, device)
@@ -157,6 +165,7 @@ def train_model(args, model, tokenizer, train_loader, valid_loader, device, mode
         mi_share_negatives=args.mi_share_negatives,
         carma_weight=args.carma_weight,
         save_model=args.save_model,
+        save_each_epoch=args.save_each_epoch,
         save_path=args.save_path,
         max_grad_norm=args.max_grad_norm,
         seed=args.seed,
